@@ -25,21 +25,18 @@ class CreateUsers(BaseModel):
     lastname : str
     password : str
     role : str
-    phone : str
 
-class UserUpdate(BaseModel):
-    email: Optional[str] = Field(default=None)
-    username: Optional[str] = Field(default=None)
-    firstname: Optional[str] = Field(default=None)
-    lastnmae: Optional[str] = Field(default=None)
-    username: Optional[str] = Field(default=None)
-    phone: Optional[str] = Field(default=None)
+class UpdateUser(BaseModel):
+    email : Optional[str] = Field(default=None)
+    username : Optional[str] = Field(default=None)
+    firstname : Optional[str] = Field(default=None)
+    lastname : Optional[str]= Field(default=None)
 
-class PassUpdate(BaseModel):
-    current_pas: str
-    new_pas: str
-    
-    
+class UpdatePassword(BaseModel):
+    current_password : str
+    new_password: str
+
+
 def authenticate_user(username, password, db):
     user = db.query(Users).filter(Users.username == username).first()
     if user is None:
@@ -78,7 +75,6 @@ def get_db():
 db_dependency = Annotated[Session, Depends(get_db)]
 user_dependency = Annotated[dict, Depends(get_current_user)]
 
-
 @router.post('/createuser')
 def create_users(db : db_dependency, new_user : CreateUsers):
     user_model = Users(
@@ -89,7 +85,6 @@ def create_users(db : db_dependency, new_user : CreateUsers):
         hash_password = bcrypt_context.hash(new_user.password),
         is_active = True,
         role = new_user.role,
-        phone = new_user.phone 
     )
 
     db.add(user_model)
@@ -102,62 +97,43 @@ def create_users(db : db_dependency, new_user : CreateUsers):
 def login_user(db : db_dependency, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
     
     user = authenticate_user(form_data.username, form_data.password, db) 
-    if user is None:
-        raise HTTPException(status_code=401, detail="Authentication Failed")
+    if not user: 
+        raise HTTPException(status_code=401, detail='Failed Authentication')
     
     token = create_access_token(user.username, user.id, user.role, timedelta(minutes=30))
-    return {'access_token': token, 'token_type': 'bearer'}
+    return {'access_token': token, 'tokey_type': 'bearer'}
 
 
-@router.put('/edit_user')
-def update_user(
-    user: user_dependency,
-    db: db_dependency,
-    update_user: UserUpdate
-):
-    if user is None:
-        raise HTTPException(status_code=401, detail="Authentication Failed")
+@router.put('/edituser')
+def update_user(user: user_dependency, db : db_dependency, update_user : UpdateUser):
 
+    if user is None: 
+        raise HTTPException(status_code=401, detail='Failed Authentication')
+    
     user = db.query(Users).filter(Users.id == user.get('id')).first()
-
-    if user is None:
-        raise HTTPException(status_code=404, detail='User not found')
-
+    
     update_data = update_user.model_dump(exclude_unset=True)
 
-    for key, value in update_data.items():
-        setattr(user, key, value)
-
-    db.commit()
-
-    return JSONResponse(
-        status_code=200,
-        content={'message': 'User updated successfully'}
-    )
-
-
-@router.put('/edit_password')
-def update_user(
-    user: user_dependency,
-    db: db_dependency,
-    update_pass: PassUpdate
-):
-    if user is None:
-        raise HTTPException(status_code=401, detail="Authentication Failed")
-
-    user = db.query(Users).filter(Users.id == user.get('id')).first()
-
-    if not bcrypt_context.verify(update_pass.current_pas,user.hash_password) :
-        raise HTTPException(status_code=401, detail='Wrong password')
-
+    for key,value in update_data.items():
+        setattr(user,key,value)
     
-    user.hash_password = bcrypt_context.hash(update_pass.new_pas)
+    db.commit()
+    return JSONResponse(status_code=200, content={'message' : 'User updated successfully'})
+
+
+@router.put('/passwordchange')
+def update_password(user: user_dependency, db : db_dependency, update_password : UpdatePassword):
+
+    if user is None: 
+        raise HTTPException(status_code=401, detail='Failed Authentication')
+    
+    user = db.query(Users).filter(Users.id == user.get('id')).first()
+    
+    if not bcrypt_context.verify(update_password.current_password, user.hash_password):
+        raise HTTPException(status_code=401, detail='Wrong Password')
+
+    user.hash_password = bcrypt_context.hash(update_password.new_password)
 
     db.add(user)
     db.commit()
-
-    return JSONResponse(
-        status_code=200,
-        content={'message': 'Password updated successfully'}
-    )
-
+    return JSONResponse(status_code=200, content={'message' : 'Password updated successfully'})
